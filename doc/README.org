@@ -1,0 +1,27 @@
+* turtle
+
+To clone ...
+
+#+BEGIN_SRC shell
+git clone --recursive https://github.com/MendocinoWhiteDeer/turtle
+#+END_SRC
+
+License: AGPL 3.0
+
+A basic lisp interpreter.
+
+To do a debug build ...
+
+#+BEGIN_SRC shell
+cmake -S . -B debug-build -DCMAKE_BUILD_TYPE=Debug
+cd debug-build
+make
+#+END_SRC
+
+To do a release build ...
+
+#+BEGIN_SRC shell
+cmake -S . -B release-build
+cd release-build
+make
+#+END_SRC
