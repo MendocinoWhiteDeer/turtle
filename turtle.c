@@ -113,8 +113,7 @@ void* assocRef(void* const x, void* alist)
 void* apply(void* fn, void* arg, void* env);
 void* eval(void* x, void* env)
 {
-  const uint8_t tag = getObjTag(x);
-  switch (tag)
+  switch (getObjTag(x))
   {
     case TAG_SYM: return assocRef(x, env);
     case TAG_CONS: return apply(eval(car(x), env), cdr(x), env);
@@ -123,8 +122,7 @@ void* eval(void* x, void* env)
 }
 void* evalList(void* x, void* env)
 {
-  const uint8_t tag = getObjTag(x);
-  switch (tag)
+  switch (getObjTag(x))
   {
     case TAG_SYM: return assocRef(x, env);
     case TAG_CONS: return cons(eval(car(x), env), evalList(cdr(x), env));
@@ -135,13 +133,36 @@ void* evalList(void* x, void* env)
 // Primitives
 void* fnCons(void* arg, void* env)
 {
-  arg = evalList(arg, env);
-  return cons(car(arg), car(cdr(arg)));
+  void* list = evalList(arg, env);
+  return cons(car(list), car(cdr(list)));
 }
 void* fnCar(void* arg, void* env) { return car(car(evalList(arg, env))); }
 void* fnCdr(void* arg, void* env) { return cdr(car(evalList(arg, env))); }
 void* fnEval(void* arg, void* env) { return eval(car(evalList(arg, env)), env); }
 void* fnQuote(void* arg, void* env) { return car(arg); }
+void* fnAnd(void* arg, void* env)
+{
+  void* x = nil;
+  while (getObjTag(arg) != TAG_NIL)
+  {
+    x = eval(car(arg), env);
+    if (getObjTag(x) == TAG_NIL) break;
+    arg = cdr(arg);
+  }
+  return x;
+}
+void* fnOr(void* arg, void* env)
+{
+  void* x = nil;
+  while (getObjTag(arg) != TAG_NIL)
+  {
+    x = eval(car(arg), env);
+    if (getObjTag(x) != TAG_NIL) break;
+    arg = cdr(arg);
+  }
+  return x;
+}
+void* fnNot(void* arg, void* env) { return getObjTag(car(evalList(arg, env))) == TAG_NIL ? truth : nil; }
 void* fnAdd(void* arg, void* env)
 {
   void* list = evalList(arg, env);
@@ -180,6 +201,7 @@ void* fnDiv(void* arg, void* env)
   return number(n);
 }
 enum { PRIM_CONS, PRIM_CAR, PRIM_CDR, PRIM_EVAL, PRIM_QUOTE,
+       PRIM_AND, PRIM_OR, PRIM_NOT,
        PRIM_ADD, PRIM_SUB, PRIM_MUL, PRIM_DIV, PRIM_TOT };
 Primitive primatives[PRIM_TOT] =
 {
@@ -188,6 +210,9 @@ Primitive primatives[PRIM_TOT] =
   {"cdr",   fnCdr},
   {"eval",  fnEval},
   {"quote", fnQuote},
+  {"and",   fnAnd},
+  {"or",    fnOr},
+  {"not",   fnNot},
   {"+",     fnAdd},
   {"-",     fnSub},
   {"*",     fnMul},
