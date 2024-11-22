@@ -34,10 +34,6 @@ typedef struct Primitive
 void* nil;
 char* truth;
 char* falsity;
-char* carErr;
-char* cdrErr;
-char* failedAssocRefErr;
-char* failedApplyErr;
 void* topLevel;
 
 // Tagged objects
@@ -98,15 +94,15 @@ Cons* cons(void* const car, void* const cdr)
   x->cdr = cdr;
   return x;
 }
-void* car(Cons* const x) {return getObjTag(x) == TAG_CONS ? x->car : carErr; }
-void* cdr(Cons* const x) {return getObjTag(x) == TAG_CONS ? x->cdr : cdrErr; }
+void* car(Cons* const x) {return getObjTag(x) == TAG_CONS ? x->car : symbol("ERROR: CAR FAILED"); }
+void* cdr(Cons* const x) {return getObjTag(x) == TAG_CONS ? x->cdr : symbol("ERROR: CDR FAILED"); }
 
 // Alist
 void* assocRef(void* const x, void* alist)
 {
   while (getObjTag(alist) == TAG_CONS && !objEqual(x, car(car(alist))))
     alist = cdr(alist);
-  return getObjTag(alist) == TAG_CONS ? cdr(car(alist)) : failedAssocRefErr;
+  return getObjTag(alist) == TAG_CONS ? cdr(car(alist)) : symbol("ERROR: ASSOC REF FAILED");
 }
 
 // Eval
@@ -163,6 +159,11 @@ void* fnOr(void* arg, void* env)
   return x;
 }
 void* fnNot(void* arg, void* env) { return getObjTag(car(evalList(arg, env))) == TAG_NIL ? truth : nil; }
+void* fnEq(void* arg, void* env)
+{
+  void* list = evalList(arg, env);
+  return objEqual(car(list), car(cdr(list))) ? truth : nil;
+}
 void* fnAdd(void* arg, void* env)
 {
   void* list = evalList(arg, env);
@@ -201,7 +202,7 @@ void* fnDiv(void* arg, void* env)
   return number(n);
 }
 enum { PRIM_CONS, PRIM_CAR, PRIM_CDR, PRIM_EVAL, PRIM_QUOTE,
-       PRIM_AND, PRIM_OR, PRIM_NOT,
+       PRIM_AND, PRIM_OR, PRIM_NOT, PRIM_EQ,
        PRIM_ADD, PRIM_SUB, PRIM_MUL, PRIM_DIV, PRIM_TOT };
 Primitive primatives[PRIM_TOT] =
 {
@@ -213,6 +214,7 @@ Primitive primatives[PRIM_TOT] =
   {"and",   fnAnd},
   {"or",    fnOr},
   {"not",   fnNot},
+  {"eq?",   fnEq},
   {"+",     fnAdd},
   {"-",     fnSub},
   {"*",     fnMul},
@@ -235,7 +237,7 @@ void* apply(void* fn, void* arg, void* env)
   switch (tag)
   {
     case TAG_PRIM: return primatives[*((uint8_t*)fn)].fn(arg, env);
-    default: return failedApplyErr; 
+    default: return symbol("ERROR: APPLY FAILED; APPLY ONLY ACCEPTS PRIMITIVES"); 
   }
 }
 
@@ -338,10 +340,6 @@ int main()
   nil = obj(TAG_NIL, 0);
   truth = symbol("#t");
   falsity = symbol("#f");
-  carErr = symbol("ERROR: CAR FAILED"); 
-  cdrErr = symbol("ERROR: CDR FAILED");
-  failedAssocRefErr = symbol("ERROR: ASSOC REF FAILED");
-  failedApplyErr = symbol("ERROR: APPLY ONLY WORKS ON PRIMITIVES");
   topLevel = cons(cons(falsity, nil), cons(cons(truth, truth), nil)); // ((#f) (#t . #t))
   topLevel = setPrimitives(topLevel);
   printf("Top-Level Environment: \n");
