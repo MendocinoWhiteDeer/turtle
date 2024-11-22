@@ -36,7 +36,7 @@ char* truth;
 char* falsity;
 char* carErr;
 char* cdrErr;
-char* failedSymErr;
+char* failedAssocRefErr;
 char* failedApplyErr;
 void* topLevel;
 
@@ -106,7 +106,7 @@ void* assocRef(void* const x, void* alist)
 {
   while (getObjTag(alist) == TAG_CONS && !objEqual(x, car(car(alist))))
     alist = cdr(alist);
-  return getObjTag(alist) == TAG_CONS ? cdr(car(alist)) : failedSymErr;
+  return getObjTag(alist) == TAG_CONS ? cdr(car(alist)) : failedAssocRefErr;
 }
 
 // Eval
@@ -273,7 +273,7 @@ int main()
   falsity = symbol("#f");
   carErr = symbol("ERROR: CAR FAILED"); 
   cdrErr = symbol("ERROR: CDR FAILED");
-  failedSymErr = symbol("ERROR: UNDEFINED SYMBOL");
+  failedAssocRefErr = symbol("ERROR: ASSOC REF FAILED");
   failedApplyErr = symbol("ERROR: APPLY ONLY WORKS ON PRIMITIVES");
   topLevel = cons(cons(falsity, nil), cons(cons(truth, truth), nil)); // ((#f) (#t . #t))
   topLevel = setPrimitives(topLevel);
