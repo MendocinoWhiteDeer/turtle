@@ -142,14 +142,56 @@ void* fnCar(void* arg, void* env) { return car(car(evalList(arg, env))); }
 void* fnCdr(void* arg, void* env) { return cdr(car(evalList(arg, env))); }
 void* fnEval(void* arg, void* env) { return eval(car(evalList(arg, env)), env); }
 void* fnQuote(void* arg, void* env) { return car(arg); }
-enum { PRIM_CONS, PRIM_CAR, PRIM_CDR, PRIM_EVAL, PRIM_QUOTE, PRIM_TOT };
+void* fnAdd(void* arg, void* env)
+{
+  void* list = evalList(arg, env);
+  double n = *((double*)car(list));
+  while (getObjTag(list = cdr(list)) != TAG_NIL)
+    n += *((double*)car(list));
+  return number(n);
+}
+void* fnSub(void* arg, void* env)
+{
+  void* list = evalList(arg, env);
+  double n = *((double*)car(list));
+  uint8_t count = 0;
+  while (getObjTag(list = cdr(list)) != TAG_NIL)
+  {
+    n -= *((double*)car(list));
+    count = 1;
+  }
+  if (!count) n = -n;
+  return number(n);
+}
+void* fnMul(void* arg, void* env)
+{
+  void* list = evalList(arg, env);
+  double n = *((double*)car(list));
+  while (getObjTag(list = cdr(list)) != TAG_NIL)
+    n *= *((double*)car(list));
+  return number(n);
+}
+void* fnDiv(void* arg, void* env)
+{
+  void* list = evalList(arg, env);
+  double n = *((double*)car(list));
+  while (getObjTag(list = cdr(list)) != TAG_NIL)
+    n /= *((double*)car(list));
+  return number(n);
+}
+enum { PRIM_CONS, PRIM_CAR, PRIM_CDR, PRIM_EVAL, PRIM_QUOTE,
+       PRIM_ADD, PRIM_SUB, PRIM_MUL, PRIM_DIV, PRIM_TOT };
 Primitive primatives[PRIM_TOT] =
 {
   {"cons",  fnCons},
   {"car",   fnCar},
   {"cdr",   fnCdr},
   {"eval",  fnEval},
-  {"quote", fnQuote}
+  {"quote", fnQuote},
+  {"+",     fnAdd},
+  {"-",     fnSub},
+  {"*",     fnMul},
+  {"/",     fnDiv}
 };
 void* setPrimitives(void* env)
 {
