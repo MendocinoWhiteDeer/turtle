@@ -25,11 +25,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include "bdwgc/include/gc/gc.h"
 
 typedef struct Cons { void* car, * cdr; } Cons;
-typedef struct Primitive
-{
-  char* name;
-  void* (*fn)(void*, void*);
-} Primitive;
+typedef struct Primitive { char* name; void* (*fn)(void*, void*); } Primitive;
 
 void* nil;
 char* truth;
@@ -106,7 +102,7 @@ void* assocRef(void* const x, void* alist)
 }
 
 // Eval
-void* apply(void* fn, void* arg, void* env);
+void* apply(void* fn, void* argList, void* env);
 void* eval(void* x, void* env)
 {
   switch (getObjTag(x))
@@ -127,82 +123,113 @@ void* evalList(void* x, void* env)
 }
 
 // Primitives
-void* fnCons(void* arg, void* env)
+void* fnCons(void* argList, void* env)
 {
-  void* list = evalList(arg, env);
+  void* list = evalList(argList, env);
   return cons(car(list), car(cdr(list)));
 }
-void* fnCar(void* arg, void* env) { return car(car(evalList(arg, env))); }
-void* fnCdr(void* arg, void* env) { return cdr(car(evalList(arg, env))); }
-void* fnEval(void* arg, void* env) { return eval(car(evalList(arg, env)), env); }
-void* fnQuote(void* arg, void* env) { return car(arg); }
-void* fnAnd(void* arg, void* env)
+void* fnCar(void* argList, void* env) { return car(car(evalList(argList, env))); }
+void* fnCdr(void* argList, void* env) { return cdr(car(evalList(argList, env))); }
+void* fnEval(void* argList, void* env) { return eval(car(evalList(argList, env)), env); }
+void* fnQuote(void* argList, void* env) { return car(argList); }
+void* fnAnd(void* argList, void* env)
 {
   void* x = nil;
-  while (getObjTag(arg) != TAG_NIL)
+  while (getObjTag(argList) != TAG_NIL)
   {
-    x = eval(car(arg), env);
+    x = eval(car(argList), env);
     if (getObjTag(x) == TAG_NIL) break;
-    arg = cdr(arg);
+    argList = cdr(argList);
   }
   return x;
 }
-void* fnOr(void* arg, void* env)
+void* fnOr(void* argList, void* env)
 {
   void* x = nil;
-  while (getObjTag(arg) != TAG_NIL)
+  while (getObjTag(argList) != TAG_NIL)
   {
-    x = eval(car(arg), env);
+    x = eval(car(argList), env);
     if (getObjTag(x) != TAG_NIL) break;
-    arg = cdr(arg);
+    argList = cdr(argList);
   }
   return x;
 }
-void* fnNot(void* arg, void* env) { return getObjTag(car(evalList(arg, env))) == TAG_NIL ? truth : nil; }
-void* fnEq(void* arg, void* env)
+void* fnNot(void* argList, void* env) { return getObjTag(car(evalList(argList, env))) == TAG_NIL ? truth : nil; }
+void* fnEq(void* argList, void* env)
 {
-  void* list = evalList(arg, env);
+  void* list = evalList(argList, env);
   return objEqual(car(list), car(cdr(list))) ? truth : nil;
 }
-void* fnAdd(void* arg, void* env)
+void* fnIf(void* argList, void* env)
 {
-  void* list = evalList(arg, env);
+  const uint8_t test = getObjTag(eval(car(argList), env)) != TAG_NIL;
+  argList = cdr(argList);
+  return eval(car(test ? argList : cdr(argList)), env);
+}
+void* fnCond(void* argList, void* env)
+{
+  while (getObjTag(argList) != TAG_NIL)
+  {
+    const uint8_t test = getObjTag(eval(car(car(argList)), env)) != TAG_NIL;
+    if (test) break;
+    argList = cdr(argList);
+  }
+  return eval(car(cdr(car(argList))), env);
+}
+void* fnAdd(void* argList, void* env)
+{
+  void* list = evalList(argList, env);
   double n = *((double*)car(list));
   while (getObjTag(list = cdr(list)) != TAG_NIL)
-    n += *((double*)car(list));
+  {
+    void* x = car(list);
+    if (getObjTag(x) != TAG_NUM) return symbol("ERROR: + FAILED; + ONLY ACCEPTS NUMBERS");
+    n += *((double*)x);
+  }
   return number(n);
 }
-void* fnSub(void* arg, void* env)
+void* fnSub(void* argList, void* env)
 {
-  void* list = evalList(arg, env);
+  void* list = evalList(argList, env);
   double n = *((double*)car(list));
   uint8_t count = 0;
   while (getObjTag(list = cdr(list)) != TAG_NIL)
   {
-    n -= *((double*)car(list));
+    void* x = car(list);
+    if (getObjTag(x) != TAG_NUM) return symbol("ERROR: - FAILED; - ONLY ACCEPTS NUMBERS");
+    n -= *((double*)x);
     count = 1;
   }
   if (!count) n = -n;
   return number(n);
 }
-void* fnMul(void* arg, void* env)
+void* fnMul(void* argList, void* env)
 {
-  void* list = evalList(arg, env);
+  void* list = evalList(argList, env);
   double n = *((double*)car(list));
   while (getObjTag(list = cdr(list)) != TAG_NIL)
-    n *= *((double*)car(list));
+  {
+    void* x = car(list);
+    if (getObjTag(x) != TAG_NUM) return symbol("ERROR: * FAILED; * ONLY ACCEPTS NUMBERS");
+    n *= *((double*)x);
+  }
   return number(n);
 }
-void* fnDiv(void* arg, void* env)
+void* fnDiv(void* argList, void* env)
 {
-  void* list = evalList(arg, env);
+  void* list = evalList(argList, env);
   double n = *((double*)car(list));
   while (getObjTag(list = cdr(list)) != TAG_NIL)
-    n /= *((double*)car(list));
+  {
+    void* x = car(list);
+    if (getObjTag(x) != TAG_NUM) return symbol("ERROR: + FAILED; + ONLY ACCEPTS NUMBERS");
+    n /= *((double*)x);
+  }
   return number(n);
 }
 enum { PRIM_CONS, PRIM_CAR, PRIM_CDR, PRIM_EVAL, PRIM_QUOTE,
        PRIM_AND, PRIM_OR, PRIM_NOT, PRIM_EQ,
+       PRIM_IF, PRIM_COND,
        PRIM_ADD, PRIM_SUB, PRIM_MUL, PRIM_DIV, PRIM_TOT };
 Primitive primatives[PRIM_TOT] =
 {
@@ -215,6 +242,8 @@ Primitive primatives[PRIM_TOT] =
   {"or",    fnOr},
   {"not",   fnNot},
   {"eq?",   fnEq},
+  {"if",    fnIf},
+  {"cond",  fnCond},
   {"+",     fnAdd},
   {"-",     fnSub},
   {"*",     fnMul},
@@ -231,12 +260,11 @@ void* setPrimitives(void* env)
   return env;
 }
 
-void* apply(void* fn, void* arg, void* env)
+void* apply(void* fn, void* argList, void* env)
 {
-  const uint8_t tag = getObjTag(fn);
-  switch (tag)
+  switch (getObjTag(fn))
   {
-    case TAG_PRIM: return primatives[*((uint8_t*)fn)].fn(arg, env);
+    case TAG_PRIM: return primatives[*((uint8_t*)fn)].fn(argList, env);
     default: return symbol("ERROR: APPLY FAILED; APPLY ONLY ACCEPTS PRIMITIVES"); 
   }
 }
@@ -245,14 +273,13 @@ void* apply(void* fn, void* arg, void* env)
 void printList(const Cons* x);
 void printObj(const void* x)
 {
-  const uint8_t tag = getObjTag(x);
-  switch(tag)
+  switch(getObjTag(x))
   {
     case TAG_SYM: printf("%s", (char*)x); return;
     case TAG_NUM: printf("%lf", *((double*)x)); return;
     case TAG_NIL: printf("()"); return; 
     case TAG_CONS: printList(x); return;
-    case TAG_PRIM: printf("$primitive$%u", *((uint8_t*)x)); return;
+    case TAG_PRIM: printf("<primitive>%u", *((uint8_t*)x)); return;
     default: printf("Object has invalid type"); return;
   }
 }
@@ -342,7 +369,7 @@ int main()
   falsity = symbol("#f");
   topLevel = cons(cons(falsity, nil), cons(cons(truth, truth), nil)); // ((#f) (#t . #t))
   topLevel = setPrimitives(topLevel);
-  printf("Top-Level Environment: \n");
+  printf("Top-Level Environment:\n");
   printObj(topLevel);
   printf("\n");
 

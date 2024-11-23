@@ -25,3 +25,11 @@ cmake -S . -B release-build
 cd release-build
 make
 #+END_SRC
+
+** Learning Resources
+
+John McCarthy. 1960. Recursive functions of symbolic expressions and their computation by machine, Part I. Commun. ACM 3, 4 (April 1960), 184–195. https://doi.org/10.1145/367177.367199
+
+Harold Abelson, Gerald J. Sussman, and Julie Sussman. 1996. Structure and Interpretation of Computer Programs (2nd. ed.). MIT Press, Cambridge, MA, USA.
+
+https://youtu.be/ALJzqoDLeyA?si=_rVVctv5kxgBZSSw
