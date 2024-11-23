@@ -314,15 +314,15 @@ void peek()
     while (lookAt != '\n' && lookAt != EOF) lookAt = getchar();
   if (lookAt == EOF) exit(0);
 }
+uint8_t lookingAtBracket() { return  (lookAt == '(') || (lookAt == ')') || (lookAt == '[') || (lookAt == ']'); }
 void nextToken()
 {
   uint8_t i = 0;
   while (lookAt <= ' ') peek();
-  if ((lookAt == '\'') || (lookAt == '(') || (lookAt == ')'))
+  if ((lookAt == '\'') || lookingAtBracket())
     { buffer[i++] = lookAt; peek(); }
   else
-    do { buffer[i++] = lookAt; peek(); }
-    while (i < BUFFER_SIZE - 1 && (lookAt > ' ') && (lookAt != '(') && (lookAt != ')'));
+    do { buffer[i++] = lookAt; peek(); } while (i < BUFFER_SIZE - 1 && (lookAt > ' ') && !lookingAtBracket());
   buffer[i] = '\0';
 }
 void* parse();
@@ -341,12 +341,27 @@ void* parseList()
   void* x = parse();
   return cons(x, parseList());
 }
+void* parseListSquare()
+{
+  nextToken();
+  if (buffer[0] == ']') return nil;
+  if(!strcmp(buffer, "."))
+  {
+    void* x = readInput();
+    nextToken();
+    return x;
+  }
+  
+  void* x = parse();
+  return cons(x, parseListSquare());
+}
 void* parse()
 {
   switch (buffer[0])
   {
     case '\'': return cons(symbol("quote"), cons(readInput(), nil));
     case '(': return parseList();
+    case '[': return parseListSquare();
     default:
     {
       double n;
