@@ -67,7 +67,6 @@ uint8_t objEqual(void* x, void* y)
   }
 }
 
-// Atoms
 char* symbol(char* str)
 {
   const size_t len = strlen(str) + 1;
@@ -75,6 +74,7 @@ char* symbol(char* str)
   memcpy(x, str, len);
   return x;
 }
+
 double* number(double n)
 {
   double* x = (double*)obj(TAG_NUM, sizeof(double));
@@ -82,7 +82,7 @@ double* number(double n)
   return x;
 }
 
-// Cons cells
+// Cons pair
 Cons* cons(void* const car, void* const cdr)
 {
   Cons* x = (Cons*)obj(TAG_CONS, sizeof(Cons));
@@ -90,8 +90,18 @@ Cons* cons(void* const car, void* const cdr)
   x->cdr = cdr;
   return x;
 }
-void* car(Cons* const x) {return getObjTag(x) == TAG_CONS ? x->car : symbol("ERROR: CAR FAILED"); }
-void* cdr(Cons* const x) {return getObjTag(x) == TAG_CONS ? x->cdr : symbol("ERROR: CDR FAILED"); }
+void* car(Cons* const x) {return getObjTag(x) == TAG_CONS ? x->car : symbol("ERROR: car FAILED"); }
+void* cdr(Cons* const x) {return getObjTag(x) == TAG_CONS ? x->cdr : symbol("ERROR: cdr FAILED"); }
+uint64_t cons_count(Cons* x)
+{
+  uint64_t count = 0;
+  while (getObjTag(x) == TAG_CONS)
+  {
+    count++;
+    x = ((Cons*)x)->cdr;
+  }
+  return count;
+}
 
 // Alist
 void* assocRef(void* const x, void* alist)
@@ -125,88 +135,128 @@ void* evalList(void* x, void* env)
 // Primitives
 void* fnCons(void* argList, void* env)
 {
+  if (cons_count(argList) != 2)
+    return symbol("ERROR: cons FAILED; cons MUST BE OF THE FORM (cons expr-1 expr-2)");
   void* list = evalList(argList, env);
   return cons(car(list), car(cdr(list)));
 }
-void* fnCar(void* argList, void* env) { return car(car(evalList(argList, env))); }
-void* fnCdr(void* argList, void* env) { return cdr(car(evalList(argList, env))); }
-void* fnEval(void* argList, void* env) { return eval(car(evalList(argList, env)), env); }
-void* fnQuote(void* argList, void* env) { return car(argList); }
+void* fnCar(void* argList, void* env)
+{
+  if (cons_count(argList) != 1)
+    return symbol("ERROR: car FAILED; car MUST BE OF THE FORM (car pair)");
+  return car(eval(car(argList), env));
+}
+void* fnCdr(void* argList, void* env)
+{
+  if (cons_count(argList) != 1)
+    return symbol("ERROR: cdr FAILED; cdr MUST BE OF THE FORM (cdr pair)");
+  return cdr(eval(car(argList), env));
+}
+void* fnEval(void* argList, void* env)
+{
+  if (cons_count(argList) != 1)
+    return symbol("ERROR: eval FAILED; eval MUST BE OF THE FORM (eval expr)");
+  return eval(eval(car(argList), env), env);
+}
+void* fnQuote(void* argList, void* env)
+{
+  if (cons_count(argList) != 1)
+    return symbol("ERROR: quote FAILED; quote MUST BE OF THE FORM (quote expr)");
+  return car(argList);
+}
 void* fnAll(void* argList, void* env)
 {
+  if (!cons_count(argList))
+    return symbol("ERROR: all FAILED; all MUST BE OF THE FORM (all expr ...)");
   void* x = nil;
-  while (getObjTag(argList) != TAG_NIL)
-  {
+  for (; getObjTag(argList) != TAG_NIL; argList = cdr(argList))
     x = eval(car(argList), env);
-    argList = cdr(argList);
-  }
   return x;
 }
 void* fnAnd(void* argList, void* env)
 {
+  if (!cons_count(argList))
+    return symbol("ERROR: and FAILED; and MUST BE OF THE FORM (and expr ...)");
   void* x = nil;
-  while (getObjTag(argList) != TAG_NIL)
+  for (; getObjTag(argList) != TAG_NIL; argList = cdr(argList))
   {
     x = eval(car(argList), env);
     if (getObjTag(x) == TAG_NIL) break;
-    argList = cdr(argList);
   }
   return x;
 }
 void* fnOr(void* argList, void* env)
 {
+  if (!cons_count(argList))
+    return symbol("ERROR: or FAILED; or MUST BE OF THE FORM (or expr ...)");
   void* x = nil;
-  while (getObjTag(argList) != TAG_NIL)
+  for (; getObjTag(argList) != TAG_NIL; argList = cdr(argList))
   {
     x = eval(car(argList), env);
     if (getObjTag(x) != TAG_NIL) break;
-    argList = cdr(argList);
   }
   return x;
 }
-void* fnNot(void* argList, void* env) { return getObjTag(car(evalList(argList, env))) == TAG_NIL ? truth : nil; }
+void* fnNot(void* argList, void* env)
+{
+  if (cons_count(argList) != 1)
+    return symbol("ERROR: not FAILED; not MUST BE OF THE FORM (not expr)");
+  return getObjTag(car(evalList(argList, env))) == TAG_NIL ? truth : nil;
+}
 void* fnEq(void* argList, void* env)
 {
+  if (cons_count(argList) != 2)
+    return symbol("ERROR: eq? FAILED; eq? MUST BE OF THE FORM (eq? expr-1 expr-2)");
   void* list = evalList(argList, env);
   return objEqual(car(list), car(cdr(list))) ? truth : nil;
 }
 void* fnIf(void* argList, void* env)
 {
+  if (cons_count(argList) != 3)
+    return symbol("ERROR: if FAILED; if MUST BE OF THE FORM (if test-expr then-expr else-expr);");
   const uint8_t test = getObjTag(eval(car(argList), env)) != TAG_NIL;
   argList = cdr(argList);
   return eval(car(test ? argList : cdr(argList)), env);
 }
 void* fnCond(void* argList, void* env)
 {
-  while (getObjTag(argList) != TAG_NIL)
+  char* err = "ERROR: cond FAILED; cond MUST BE OF THE FORM (cond clause ...) WHERE clause is of the form (test-expr then-expr ...)";
+  if (!cons_count(argList)) return symbol(err);
+  for (void* l = argList; getObjTag(l) != TAG_NIL; l = cdr(l))
+    if (cons_count(car(l)) < 2) return symbol(err);
+  for (; getObjTag(argList) != TAG_NIL; argList = cdr(argList))
   {
-    const uint8_t test = getObjTag(eval(car(car(argList)), env)) != TAG_NIL;
-    if (test) break;
-    argList = cdr(argList);
+    void * test_expr = car(car(argList));
+    if (getObjTag(eval(test_expr, env)) != TAG_NIL) break;
   }
-  return eval(car(cdr(car(argList))), env);
+  void* then_list = cdr(car(argList));
+  return fnAll(then_list, env);
 }
 void* fnAdd(void* argList, void* env)
 {
-  void* list = evalList(argList, env);
-  double n = *((double*)car(list));
-  while (getObjTag(list = cdr(list)) != TAG_NIL)
+  char* err = "ERROR: + FAILED; + MUST BE OF THE FORM (+ number ...)";
+  if (!cons_count(argList)) return symbol(err);
+  void* l = evalList(argList, env);
+  double n = *((double*)car(l));
+  while (getObjTag(l = cdr(l)) != TAG_NIL)
   {
-    void* x = car(list);
-    if (getObjTag(x) != TAG_NUM) return symbol("ERROR: + FAILED; + ONLY ACCEPTS NUMBERS");
+    void* x = car(l);
+    if (getObjTag(x) != TAG_NUM) return symbol(err);
     n += *((double*)x);
   }
   return number(n);
 }
 void* fnSub(void* argList, void* env)
 {
-  void* list = evalList(argList, env);
-  double n = *((double*)car(list));
+  char* err = "ERROR: - FAILED; - MUST BE OF THE FORM (- number ...)";
+  if (!cons_count(argList)) return symbol(err);
+  void* l = evalList(argList, env);
+  double n = *((double*)car(l));
   uint8_t count = 0;
-  while (getObjTag(list = cdr(list)) != TAG_NIL)
+  while (getObjTag(l = cdr(l)) != TAG_NIL)
   {
-    void* x = car(list);
-    if (getObjTag(x) != TAG_NUM) return symbol("ERROR: - FAILED; - ONLY ACCEPTS NUMBERS");
+    void* x = car(l);
+    if (getObjTag(x) != TAG_NUM) return symbol(err);
     n -= *((double*)x);
     count = 1;
   }
@@ -215,24 +265,28 @@ void* fnSub(void* argList, void* env)
 }
 void* fnMul(void* argList, void* env)
 {
-  void* list = evalList(argList, env);
-  double n = *((double*)car(list));
-  while (getObjTag(list = cdr(list)) != TAG_NIL)
+  char* err =  "ERROR: * FAILED; * MUST BE OF THE FORM (* number ...)";
+  if (!cons_count(argList)) return symbol(err);
+  void* l = evalList(argList, env);
+  double n = *((double*)car(l));
+  while (getObjTag(l = cdr(l)) != TAG_NIL)
   {
-    void* x = car(list);
-    if (getObjTag(x) != TAG_NUM) return symbol("ERROR: * FAILED; * ONLY ACCEPTS NUMBERS");
+    void* x = car(l);
+    if (getObjTag(x) != TAG_NUM) return symbol(err);
     n *= *((double*)x);
   }
   return number(n);
 }
 void* fnDiv(void* argList, void* env)
 {
-  void* list = evalList(argList, env);
-  double n = *((double*)car(list));
-  while (getObjTag(list = cdr(list)) != TAG_NIL)
+  char* err =  "ERROR: / FAILED; / MUST BE OF THE FORM (/ number ...)";
+  if (!cons_count(argList)) return symbol(err);
+  void* l = evalList(argList, env);
+  double n = *((double*)car(l));
+  while (getObjTag(l = cdr(l)) != TAG_NIL)
   {
-    void* x = car(list);
-    if (getObjTag(x) != TAG_NUM) return symbol("ERROR: / FAILED; / ONLY ACCEPTS NUMBERS");
+    void* x = car(l);
+    if (getObjTag(x) != TAG_NUM) return symbol(err);
     n /= *((double*)x);
   }
   return number(n);
