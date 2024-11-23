@@ -132,6 +132,16 @@ void* fnCar(void* argList, void* env) { return car(car(evalList(argList, env)));
 void* fnCdr(void* argList, void* env) { return cdr(car(evalList(argList, env))); }
 void* fnEval(void* argList, void* env) { return eval(car(evalList(argList, env)), env); }
 void* fnQuote(void* argList, void* env) { return car(argList); }
+void* fnAll(void* argList, void* env)
+{
+  void* x = nil;
+  while (getObjTag(argList) != TAG_NIL)
+  {
+    x = eval(car(argList), env);
+    argList = cdr(argList);
+  }
+  return x;
+}
 void* fnAnd(void* argList, void* env)
 {
   void* x = nil;
@@ -227,10 +237,11 @@ void* fnDiv(void* argList, void* env)
   }
   return number(n);
 }
-enum { PRIM_CONS, PRIM_CAR, PRIM_CDR, PRIM_EVAL, PRIM_QUOTE,
+enum { PRIM_CONS, PRIM_CAR, PRIM_CDR, PRIM_EVAL, PRIM_QUOTE, PRIM_ALL,
        PRIM_AND, PRIM_OR, PRIM_NOT, PRIM_EQ,
        PRIM_IF, PRIM_COND,
-       PRIM_ADD, PRIM_SUB, PRIM_MUL, PRIM_DIV, PRIM_TOT };
+       PRIM_ADD, PRIM_SUB, PRIM_MUL, PRIM_DIV,
+       PRIM_TOT };
 Primitive primatives[PRIM_TOT] =
 {
   {"cons",  fnCons},
@@ -238,6 +249,7 @@ Primitive primatives[PRIM_TOT] =
   {"cdr",   fnCdr},
   {"eval",  fnEval},
   {"quote", fnQuote},
+  {"all",   fnAll},
   {"and",   fnAnd},
   {"or",    fnOr},
   {"not",   fnNot},
