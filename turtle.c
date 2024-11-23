@@ -218,6 +218,20 @@ void* fnIf(void* argList, void* env)
   argList = cdr(argList);
   return eval(car(test ? argList : cdr(argList)), env);
 }
+void* fnWhen(void* argList, void* env)
+{
+  if (cons_count(argList) < 2)
+    return symbol("ERROR: when FAILED; when MUST BE OF THE FORM (when test-expr then-expr ...);");
+  const uint8_t test = getObjTag(eval(car(argList), env)) != TAG_NIL;
+  return test ? fnAll(cdr(argList), env) : nil;
+}
+void* fnUnless(void* argList, void* env)
+{
+  if (cons_count(argList) < 2)
+    return symbol("ERROR: unless FAILED; unless MUST BE OF THE FORM (unless test-expr then-expr ...);");
+  const uint8_t test = getObjTag(eval(car(argList), env)) != TAG_NIL;
+  return test ? nil : fnAll(cdr(argList), env);
+}
 void* fnCond(void* argList, void* env)
 {
   char* err = "ERROR: cond FAILED; cond MUST BE OF THE FORM (cond clause ...) WHERE clause is of the form (test-expr then-expr ...)";
@@ -293,27 +307,29 @@ void* fnDiv(void* argList, void* env)
 }
 enum { PRIM_CONS, PRIM_CAR, PRIM_CDR, PRIM_EVAL, PRIM_QUOTE, PRIM_ALL,
        PRIM_AND, PRIM_OR, PRIM_NOT, PRIM_EQ,
-       PRIM_IF, PRIM_COND,
+       PRIM_IF, PRIM_WHEN, PRIM_UNLESS, PRIM_COND,
        PRIM_ADD, PRIM_SUB, PRIM_MUL, PRIM_DIV,
        PRIM_TOT };
 Primitive primatives[PRIM_TOT] =
 {
-  {"cons",  fnCons},
-  {"car",   fnCar},
-  {"cdr",   fnCdr},
-  {"eval",  fnEval},
-  {"quote", fnQuote},
-  {"all",   fnAll},
-  {"and",   fnAnd},
-  {"or",    fnOr},
-  {"not",   fnNot},
-  {"eq?",   fnEq},
-  {"if",    fnIf},
-  {"cond",  fnCond},
-  {"+",     fnAdd},
-  {"-",     fnSub},
-  {"*",     fnMul},
-  {"/",     fnDiv}
+  {"cons",   fnCons},
+  {"car",    fnCar},
+  {"cdr",    fnCdr},
+  {"eval",   fnEval},
+  {"quote",  fnQuote},
+  {"all",    fnAll},
+  {"and",    fnAnd},
+  {"or",     fnOr},
+  {"not",    fnNot},
+  {"eq?",    fnEq},
+  {"if",     fnIf},
+  {"when",   fnWhen},
+  {"unless", fnUnless},
+  {"cond",   fnCond},
+  {"+",      fnAdd},
+  {"-",      fnSub},
+  {"*",      fnMul},
+  {"/",      fnDiv}
 };
 void* setPrimitives(void* env)
 {
