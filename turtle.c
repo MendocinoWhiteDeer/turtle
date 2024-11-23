@@ -222,7 +222,7 @@ void* fnDiv(void* argList, void* env)
   while (getObjTag(list = cdr(list)) != TAG_NIL)
   {
     void* x = car(list);
-    if (getObjTag(x) != TAG_NUM) return symbol("ERROR: + FAILED; + ONLY ACCEPTS NUMBERS");
+    if (getObjTag(x) != TAG_NUM) return symbol("ERROR: / FAILED; / ONLY ACCEPTS NUMBERS");
     n /= *((double*)x);
   }
   return number(n);
