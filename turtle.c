@@ -33,7 +33,7 @@ char* falsity;
 void* topLevel;
 
 // Tagged objects
-enum { TAG_SYM, TAG_NUM, TAG_NIL, TAG_CONS, TAG_PRIM};
+enum { TAG_SYM, TAG_NUM, TAG_STR, TAG_NIL, TAG_CONS, TAG_PRIM};
 void* obj(const uint8_t type, const uint64_t size)
 {
   void* mem = GC_MALLOC(sizeof(uint8_t) + size);
@@ -53,7 +53,7 @@ uint8_t objEqual(void* x, void* y)
 
   switch(tag)
   {
-    case TAG_SYM: return !strcmp(x, y);
+    case TAG_SYM: case TAG_STR: return !strcmp(x, y);
     case TAG_NUM: return *((double*)x) == *((double*)y);
     case TAG_NIL: return 1;
     case TAG_CONS:
@@ -79,6 +79,14 @@ double* number(double n)
 {
   double* x = (double*)obj(TAG_NUM, sizeof(double));
   *x = n;
+  return x;
+}
+
+char* string(char* str)
+{
+  const size_t len = strlen(str) + 1;
+  char* x = (char*)obj(TAG_STR, len);
+  memcpy(x, str, len);
   return x;
 }
 
@@ -137,8 +145,8 @@ void* fnCons(void* argList, void* env)
 {
   if (cons_count(argList) != 2)
     return symbol("ERROR: cons FAILED; cons MUST BE OF THE FORM (cons expr-1 expr-2)");
-  void* list = evalList(argList, env);
-  return cons(car(list), car(cdr(list)));
+  void* l = evalList(argList, env);
+  return cons(car(l), car(cdr(l)));
 }
 void* fnCar(void* argList, void* env)
 {
@@ -207,8 +215,8 @@ void* fnEq(void* argList, void* env)
 {
   if (cons_count(argList) != 2)
     return symbol("ERROR: eq? FAILED; eq? MUST BE OF THE FORM (eq? expr-1 expr-2)");
-  void* list = evalList(argList, env);
-  return objEqual(car(list), car(cdr(list))) ? truth : nil;
+  void* l = evalList(argList, env);
+  return objEqual(car(l), car(cdr(l))) ? truth : nil;
 }
 void* fnIf(void* argList, void* env)
 {
@@ -305,31 +313,76 @@ void* fnDiv(void* argList, void* env)
   }
   return number(n);
 }
+void* fnPrintf(void* argList, void* env)
+{
+  char* err = "ERROR: printf FAILED; printf MUST BE OF THE FORM (printf string)";
+  if (!cons_count(argList)) return symbol(err);
+  char* x = (char*)nil;
+  for (; getObjTag(argList) != TAG_NIL; argList = cdr(argList))
+  {
+    x = (char*)car(argList);
+    if (getObjTag(x) != TAG_STR) return symbol(err);
+
+    uint64_t i = 0, j = 0, len = strlen(x) + 1;
+    char* fmt = GC_MALLOC(sizeof(char) * len);
+    for (; x[i] != '\0'; i++)
+    {
+      if (x[i] == '\\' && i < len - 1)
+      {
+	switch(x[i + 1])
+	{
+	  case 'n': fmt[j++]= '\n'; i++; break;
+	  case 't': fmt[j++] = '\t'; i++; break;
+	  default: fmt[j++] = x[++i]; break;
+	}
+      }
+      else fmt[j++] = x[i];
+    }
+    fmt[j] = '\0';
+    printf("%s", fmt);
+    GC_FREE(fmt);
+  }
+  return x;
+}
+void* fnStringToCharList(void* argList, void* env)
+{
+  char* err =  "ERROR: string->char-list FAILED; string->char-list MUST BE OF THE FORM (string->char-list string)";
+  if (cons_count(argList) != 1) return symbol(err);
+  char* str = car(argList);
+  if (getObjTag(str) != TAG_STR) return symbol(err);
+  void* x = nil;
+  for (uint64_t i = 0; str[i] != '\0'; i++)
+    x = cons(number(str[i]), x);
+  return x;
+}
 enum { PRIM_CONS, PRIM_CAR, PRIM_CDR, PRIM_EVAL, PRIM_QUOTE, PRIM_ALL,
        PRIM_AND, PRIM_OR, PRIM_NOT, PRIM_EQ,
        PRIM_IF, PRIM_WHEN, PRIM_UNLESS, PRIM_COND,
        PRIM_ADD, PRIM_SUB, PRIM_MUL, PRIM_DIV,
+       PRIM_PRINTF, PRIM_STRING_TO_CHAR_LIST,
        PRIM_TOT };
 Primitive primatives[PRIM_TOT] =
 {
-  {"cons",   fnCons},
-  {"car",    fnCar},
-  {"cdr",    fnCdr},
-  {"eval",   fnEval},
-  {"quote",  fnQuote},
-  {"all",    fnAll},
-  {"and",    fnAnd},
-  {"or",     fnOr},
-  {"not",    fnNot},
-  {"eq?",    fnEq},
-  {"if",     fnIf},
-  {"when",   fnWhen},
-  {"unless", fnUnless},
-  {"cond",   fnCond},
-  {"+",      fnAdd},
-  {"-",      fnSub},
-  {"*",      fnMul},
-  {"/",      fnDiv}
+  {"cons",              fnCons},
+  {"car",               fnCar},
+  {"cdr",               fnCdr},
+  {"eval",              fnEval},
+  {"quote",             fnQuote},
+  {"all",               fnAll},
+  {"and",               fnAnd},
+  {"or",                fnOr},
+  {"not",               fnNot},
+  {"eq?",               fnEq},
+  {"if",                fnIf},
+  {"when",              fnWhen},
+  {"unless",            fnUnless},
+  {"cond",              fnCond},
+  {"+",                 fnAdd},
+  {"-",                 fnSub},
+  {"*",                 fnMul},
+  {"/",                 fnDiv},
+  {"printf",            fnPrintf},
+  {"string->char-list", fnStringToCharList}
 };
 void* setPrimitives(void* env)
 {
@@ -359,6 +412,7 @@ void printObj(const void* x)
   {
     case TAG_SYM: printf("%s", (char*)x); return;
     case TAG_NUM: printf("%lf", *((double*)x)); return;
+    case TAG_STR: printf("\"%s\"", (char*)x); return;
     case TAG_NIL: printf("()"); return; 
     case TAG_CONS: printList(x); return;
     case TAG_PRIM: printf("<primitive>%u", *((uint8_t*)x)); return;
@@ -403,6 +457,12 @@ void nextToken()
   while (lookAt <= ' ') peek();
   if ((lookAt == '\'') || lookingAtBracket())
     { buffer[i++] = lookAt; peek(); }
+  else if (lookAt == '"') // copy [" t o k e n \0] to buffer; lead with " for parsing
+  {
+    do { buffer[i++] = lookAt; peek(); } while (i < BUFFER_SIZE - 1 && (lookAt != '"') && (lookAt != '\n'));
+    if (lookAt != '"') fprintf(stderr, "nextToken: missing closing double quote\n");
+    peek();
+  }
   else
     do { buffer[i++] = lookAt; peek(); } while (i < BUFFER_SIZE - 1 && (lookAt > ' ') && !lookingAtBracket());
   buffer[i] = '\0';
@@ -442,6 +502,7 @@ void* parse()
   switch (buffer[0])
   {
     case '\'': return cons(symbol("quote"), cons(readInput(), nil));
+    case '"': return string(buffer + 1);
     case '(': return parseList();
     case '[': return parseListSquare();
     default:
@@ -473,7 +534,8 @@ int main()
   // REPL
   while(1)
   {
-    printf("\n>");
+    printf(">");
     printObj(eval(readInput(), topLevel));
+    printf("\n");
   }
 }
