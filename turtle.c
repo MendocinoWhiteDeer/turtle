@@ -23,6 +23,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #include <errno.h>
 #include "bdwgc/include/gc/gc.h"
 
@@ -40,9 +41,9 @@ void panic(char* str)
   exit(1);
 }
 
-__pid_t frk()
+pid_t frk()
 {
-  __pid_t pid = fork();
+  pid_t pid = fork();
   if (pid == -1) panic("frk() failed");
   return pid;
 }
@@ -52,7 +53,7 @@ enum { TAG_SYM, TAG_NUM, TAG_STR, TAG_NIL, TAG_CONS, TAG_PRIM};
 void* obj(const uint8_t type, const uint64_t size)
 {  
   void* mem = GC_MALLOC(sizeof(uint8_t) + size);
-  if (!mem) panic("obj: GC_MALLOC failed");
+  if (!mem) panic("obj(): GC_MALLOC failed");
   memcpy(mem, &type, sizeof(uint8_t));
   return (void*)((uint64_t)mem + sizeof(uint8_t));
 }
@@ -376,12 +377,52 @@ void* fnCwd(void* argList, void* env)
   free(buf);
   return x;
 }
+void* fnRun(void* argList, void* env)
+{
+  char* err =  "ERROR: run FAILED; MUST BE OF THE FORM (run string)";
+  if (cons_count(argList) != 1) return symbol(err);
+  char* str = eval(car(argList), env);
+  if (getObjTag(str) != TAG_STR) return symbol(err);
+
+  pid_t pid = frk();
+  // parent
+  if (pid)
+  {
+    int status;
+    if (wait(&status) == -1) return symbol("ERROR: run FAILED; C wait() FAILED");
+    if (WIFEXITED(status)) { status = WEXITSTATUS(status); return status ? nil : truth; }
+  }
+  // child
+  else
+  {
+    uint64_t capacity = 32, size = 0;
+    char** execArgs = malloc(capacity * sizeof(char*));
+    if (!execArgs) panic("fnRun(): malloc failed");
+    char* delim = " \t\n\r\f\v";
+    uint8_t reachedEnd = 0;
+    for (char* tkn = strtok(str, delim); !reachedEnd; tkn = strtok(NULL, delim))
+    {
+      if (size + 1 > capacity)
+      {
+	capacity *= 8;
+	execArgs = realloc(execArgs, capacity * sizeof(char*));
+	if (!execArgs) panic("fnRun(): realloc failed");
+      }
+      execArgs[size++] = tkn;
+      if (!tkn) reachedEnd = 1; // stop when we store all the tokens and the NULL-terminator into the arg list
+    }
+    execvp(execArgs[0], execArgs);
+    free(execArgs);
+    exit(1);
+  }
+  return nil;
+}
 enum { PRIM_CONS, PRIM_CAR, PRIM_CDR, PRIM_EVAL, PRIM_QUOTE, PRIM_ALL,
        PRIM_AND, PRIM_OR, PRIM_NOT, PRIM_EQ,
        PRIM_IF, PRIM_WHEN, PRIM_UNLESS, PRIM_COND,
        PRIM_ADD, PRIM_SUB, PRIM_MUL, PRIM_DIV,
        PRIM_PRINTF, PRIM_STRING_TO_CHAR_LIST,
-       PRIM_CD, PRIM_CWD,
+       PRIM_CD, PRIM_CWD, PRIM_RUN,
        PRIM_TOT };
 Primitive primatives[PRIM_TOT] =
 {
@@ -406,7 +447,8 @@ Primitive primatives[PRIM_TOT] =
   {"printf",            fnPrintf},
   {"string->char-list", fnStringToCharList},
   {"cd",                fnCd},
-  {"cwd",               fnCwd}
+  {"cwd",               fnCwd},
+  {"run",               fnRun}
 };
 void* setPrimitives(void* env)
 {
