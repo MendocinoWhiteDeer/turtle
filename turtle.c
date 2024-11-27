@@ -38,7 +38,7 @@ void* topLevel;
 void panic(char* str)
 {
   fprintf(stderr, "%s\n", str);
-  exit(1);
+  exit(EXIT_FAILURE);
 }
 
 pid_t frk()
@@ -399,41 +399,49 @@ char** parseExecArgs(char* str)
 }
 void* fnRun(void* argList, void* env)
 {
-  char* err =  "ERROR: run FAILED; MUST BE OF THE FORM (run string)";
-  if (cons_count(argList) != 1) return symbol(err);
-  char* str = eval(car(argList), env);
-  if (getObjTag(str) != TAG_STR) return symbol(err);
-
-  pid_t pid = frk();
-  // parent
-  if (pid)
+  char* err =  "ERROR: run FAILED; MUST BE OF THE FORM (run arg-string ...)";
+  if (cons_count(argList) < 1) return symbol(err);
+  uint8_t allSuccess = 1;
+  for (void* l = evalList(argList, env); getObjTag(l) != TAG_NIL; l = cdr(l))
   {
-    int status;
-    if (wait(&status) == -1) return symbol("ERROR: run FAILED; C wait() FAILED");
-    if (WIFEXITED(status)) { status = WEXITSTATUS(status); return status ? nil : truth; }
+    char* x = car(l);
+    if (getObjTag(x) != TAG_STR) return symbol(err);
+    // parent
+    if (frk())
+    {
+      int status;
+      if (wait(&status) == -1) return symbol("ERROR: run FAILED; C wait() FAILED");
+      if (WIFEXITED(status)) { if(WEXITSTATUS(status)) allSuccess = 0; }
+    }
+    // child
+    else
+    {
+      char** execArgs = parseExecArgs(x);
+      execvp(execArgs[0], execArgs);
+      free(execArgs);
+      exit(EXIT_FAILURE);
+    }
   }
-  // child
-  else
-  {
-    char** execArgs = parseExecArgs(str);
-    execvp(execArgs[0], execArgs);
-    free(execArgs);
-    exit(1);
-  }
-  return nil;
+  return allSuccess ? truth : nil;
 }
 void* fnDaemon(void* argList, void* env)
 {
-  char* err =  "ERROR: daemon FAILED; MUST BE OF THE FORM (daemon string)";
+  char* err =  "ERROR: daemon FAILED; MUST BE OF THE FORM (daemon arg-string)";
   if (cons_count(argList) != 1) return symbol(err);
-  char* str = eval(car(argList), env);
-  if (getObjTag(str) != TAG_STR) return symbol(err);
-
-  char** execArgs = parseExecArgs(str);
-  pid_t pid = frk();
-  if (!pid) execvp(execArgs[0], execArgs);
+  char* x = eval(car(argList), env);
+  if (getObjTag(x) != TAG_STR) return symbol(err);
+  char** execArgs = parseExecArgs(x);
+  if (!frk()) execvp(execArgs[0], execArgs);
   return truth;
 }
+/*
+TODO PIPING
+void* fnPipe(void* argList, void* env)
+{
+  char* err =  "ERROR: pipe FAILED; MUST BE OF THE FORM (pipe arg-string-1 arg-string-2 ...)";
+  if (cons_count(argList) < 2) return symbol(err);
+}
+*/
 enum { PRIM_CONS, PRIM_CAR, PRIM_CDR, PRIM_EVAL, PRIM_QUOTE, PRIM_ALL,
        PRIM_AND, PRIM_OR, PRIM_NOT, PRIM_EQ,
        PRIM_IF, PRIM_WHEN, PRIM_UNLESS, PRIM_COND,
@@ -532,7 +540,7 @@ void peek()
   lookAt = getchar();
   if (lookAt == ';')
     while (lookAt != '\n' && lookAt != EOF) lookAt = getchar();
-  if (lookAt == EOF) exit(0);
+  if (lookAt == EOF) exit(EXIT_SUCCESS);
 }
 uint8_t lookingAtBracket() { return  (lookAt == '(') || (lookAt == ')') || (lookAt == '[') || (lookAt == ']'); }
 void nextToken()
