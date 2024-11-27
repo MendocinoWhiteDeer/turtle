@@ -377,6 +377,26 @@ void* fnCwd(void* argList, void* env)
   free(buf);
   return x;
 }
+char** parseExecArgs(char* str)
+{
+  uint64_t capacity = 32, size = 0;
+  char** execArgs = malloc(capacity * sizeof(char*));
+  if (!execArgs) panic("fnRun(): malloc failed");
+  char* delim = " \t\n\r\f\v";
+  uint8_t reachedEnd = 0;
+  for (char* tkn = strtok(str, delim); !reachedEnd; tkn = strtok(NULL, delim))
+  {
+    if (size + 1 > capacity)
+      {
+	capacity *= 8;
+	execArgs = realloc(execArgs, capacity * sizeof(char*));
+	if (!execArgs) panic("fnRun(): realloc failed");
+      }
+    execArgs[size++] = tkn;
+    if (!tkn) reachedEnd = 1; // stop when we store all the tokens and the NULL-terminator into the arg list
+  }
+  return execArgs;
+}
 void* fnRun(void* argList, void* env)
 {
   char* err =  "ERROR: run FAILED; MUST BE OF THE FORM (run string)";
@@ -395,34 +415,31 @@ void* fnRun(void* argList, void* env)
   // child
   else
   {
-    uint64_t capacity = 32, size = 0;
-    char** execArgs = malloc(capacity * sizeof(char*));
-    if (!execArgs) panic("fnRun(): malloc failed");
-    char* delim = " \t\n\r\f\v";
-    uint8_t reachedEnd = 0;
-    for (char* tkn = strtok(str, delim); !reachedEnd; tkn = strtok(NULL, delim))
-    {
-      if (size + 1 > capacity)
-      {
-	capacity *= 8;
-	execArgs = realloc(execArgs, capacity * sizeof(char*));
-	if (!execArgs) panic("fnRun(): realloc failed");
-      }
-      execArgs[size++] = tkn;
-      if (!tkn) reachedEnd = 1; // stop when we store all the tokens and the NULL-terminator into the arg list
-    }
+    char** execArgs = parseExecArgs(str);
     execvp(execArgs[0], execArgs);
     free(execArgs);
     exit(1);
   }
   return nil;
 }
+void* fnDaemon(void* argList, void* env)
+{
+  char* err =  "ERROR: daemon FAILED; MUST BE OF THE FORM (daemon string)";
+  if (cons_count(argList) != 1) return symbol(err);
+  char* str = eval(car(argList), env);
+  if (getObjTag(str) != TAG_STR) return symbol(err);
+
+  char** execArgs = parseExecArgs(str);
+  pid_t pid = frk();
+  if (!pid) execvp(execArgs[0], execArgs);
+  return truth;
+}
 enum { PRIM_CONS, PRIM_CAR, PRIM_CDR, PRIM_EVAL, PRIM_QUOTE, PRIM_ALL,
        PRIM_AND, PRIM_OR, PRIM_NOT, PRIM_EQ,
        PRIM_IF, PRIM_WHEN, PRIM_UNLESS, PRIM_COND,
        PRIM_ADD, PRIM_SUB, PRIM_MUL, PRIM_DIV,
        PRIM_PRINTF, PRIM_STRING_TO_CHAR_LIST,
-       PRIM_CD, PRIM_CWD, PRIM_RUN,
+       PRIM_CD, PRIM_CWD, PRIM_RUN, PRIM_DAEMON,
        PRIM_TOT };
 Primitive primatives[PRIM_TOT] =
 {
@@ -448,7 +465,8 @@ Primitive primatives[PRIM_TOT] =
   {"string->char-list", fnStringToCharList},
   {"cd",                fnCd},
   {"cwd",               fnCwd},
-  {"run",               fnRun}
+  {"run",               fnRun},
+  {"daemon",            fnDaemon}
 };
 void* setPrimitives(void* env)
 {
