@@ -406,20 +406,21 @@ void* fnRun(void* argList, void* env)
   {
     char* x = car(l);
     if (getObjTag(x) != TAG_STR) return symbol(err);
-    // parent
-    if (frk())
-    {
-      int status;
-      if (wait(&status) == -1) return symbol("ERROR: run FAILED; C wait() FAILED");
-      if (WIFEXITED(status)) { if(WEXITSTATUS(status)) allSuccess = 0; }
-    }
+
     // child
-    else
+    if (!frk())
     {
       char** execArgs = parseExecArgs(x);
       execvp(execArgs[0], execArgs);
       free(execArgs);
       exit(EXIT_FAILURE);
+    }
+
+    // parent
+    {
+      int status;
+      if (wait(&status) == -1) panic("fnRun(); wait() failed");
+      if (WIFEXITED(status)) { if(WEXITSTATUS(status)) allSuccess = 0; }
     }
   }
   return allSuccess ? truth : nil;
@@ -430,24 +431,86 @@ void* fnDaemon(void* argList, void* env)
   if (cons_count(argList) != 1) return symbol(err);
   char* x = eval(car(argList), env);
   if (getObjTag(x) != TAG_STR) return symbol(err);
-  char** execArgs = parseExecArgs(x);
-  if (!frk()) execvp(execArgs[0], execArgs);
+  if (!frk())
+  {
+    char** execArgs = parseExecArgs(x);
+    execvp(execArgs[0], execArgs);
+    exit(EXIT_FAILURE);
+  }
   return truth;
 }
-/*
-TODO PIPING
+uint8_t pipeHelper(void* evalArgList, char** execArgsOut)
+{
+  int pipefd[2];
+  evalArgList = cdr(evalArgList);
+  const uint8_t isChild = (getObjTag(evalArgList) != TAG_NIL) ? 1 : 0;
+  if (isChild)
+    if (pipe(pipefd) == -1) panic("fnPipe(); pipe() failed");
+
+  // child 1
+  if (!frk())
+  {
+    if (isChild)
+    {
+      close(STDOUT_FILENO);
+      dup(pipefd[1]);
+      close(pipefd[0]);
+      close(pipefd[1]);
+    }
+    execvp(execArgsOut[0], execArgsOut);
+    exit(EXIT_FAILURE);
+  }
+
+  // child 2
+  if (isChild && !frk())
+  {
+    close(STDIN_FILENO);
+    dup(pipefd[0]);
+    close(pipefd[0]);
+    close(pipefd[1]);
+    char** execArgsIn = parseExecArgs(car(evalArgList));
+    pipeHelper(evalArgList, execArgsIn) ? exit(EXIT_SUCCESS) : exit(EXIT_FAILURE);
+  }
+    
+  // parent
+  uint8_t allSuccess = 1;
+  {
+    if (isChild)
+    {
+      close(pipefd[0]);
+      close(pipefd[1]);
+    }
+    pid_t w[2];
+    w[1] = 0;
+    for(uint8_t i = 0; i < 1 + isChild; i++)
+    {
+      int status;
+      w[i] = wait(&status);
+      if (w[i] == -1) continue;
+      if (WIFEXITED(status)) { if(WEXITSTATUS(status)) allSuccess = 0; }
+    }
+    if ((w[0] == -1) || (w[1] == -1)) panic("fnPipe(); C wait() failed");
+  }
+  return allSuccess;
+}
 void* fnPipe(void* argList, void* env)
 {
   char* err =  "ERROR: pipe FAILED; MUST BE OF THE FORM (pipe arg-string-1 arg-string-2 ...)";
   if (cons_count(argList) < 2) return symbol(err);
+  void* l = evalList(argList, env);
+  for (void* ll = l; getObjTag(ll) != TAG_NIL; ll = cdr(ll))
+    if (getObjTag(car(ll)) != TAG_STR) return symbol(err);
+  char** execArgsOut = parseExecArgs(car(l));
+  const uint8_t allSuccess = pipeHelper(l, execArgsOut);
+  free(execArgsOut);
+  return allSuccess ? truth : nil;
 }
-*/
 enum { PRIM_CONS, PRIM_CAR, PRIM_CDR, PRIM_EVAL, PRIM_QUOTE, PRIM_ALL,
        PRIM_AND, PRIM_OR, PRIM_NOT, PRIM_EQ,
        PRIM_IF, PRIM_WHEN, PRIM_UNLESS, PRIM_COND,
        PRIM_ADD, PRIM_SUB, PRIM_MUL, PRIM_DIV,
        PRIM_PRINTF, PRIM_STRING_TO_CHAR_LIST,
-       PRIM_CD, PRIM_CWD, PRIM_RUN, PRIM_DAEMON,
+       PRIM_CD, PRIM_CWD, PRIM_RUN, PRIM_DAEMON, PRIM_PIPE,
        PRIM_TOT };
 Primitive primatives[PRIM_TOT] =
 {
@@ -474,7 +537,8 @@ Primitive primatives[PRIM_TOT] =
   {"cd",                fnCd},
   {"cwd",               fnCwd},
   {"run",               fnRun},
-  {"daemon",            fnDaemon}
+  {"daemon",            fnDaemon},
+  {"pipe",              fnPipe}
 };
 void* setPrimitives(void* env)
 {
