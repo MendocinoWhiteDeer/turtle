@@ -46,7 +46,7 @@ pid_t frk()
 }
 
 // Tagged objects
-enum { TAG_SYM, TAG_STR, TAG_NUM, TAG_PRIM, TAG_CLSR, TAG_NIL, TAG_CONS};
+enum { TAG_SYM, TAG_STR, TAG_NUM, TAG_PRIM, TAG_CLSR, TAG_MACRO, TAG_NIL, TAG_CONS};
 typedef struct Cons { void* car, * cdr; } Cons;
 typedef struct Primitive { char* name; void* (*fn)(void*, void*); } Primitive;
 void* obj(const uint8_t type, const uint64_t size)
@@ -67,7 +67,7 @@ uint8_t objEqual(const void* const x, const void* const y)
     case TAG_SYM: case TAG_STR: return !strcmp(x, y);
     case TAG_NUM: return *((double*)x) == *((double*)y); 
     case TAG_PRIM: return *((uint8_t*)x) == *((uint8_t*)y);
-    case TAG_CLSR:
+    case TAG_CLSR: case TAG_MACRO:
     {
       Cons* cx = *((Cons**)x);
       Cons* cy = *((Cons**)y);
@@ -175,6 +175,15 @@ Cons** closure(void* argList, void* body, void* env)
   return x;
 }
 
+// Macros
+Cons** macro(void* argList, void* body)
+{
+  Cons* c = cons(argList, body);
+  Cons** x = obj(TAG_MACRO, sizeof(Cons*));
+  memcpy(x, &c, sizeof(Cons*));
+  return x;
+}
+
 // Primitives
 void* fnCons(void* argList, void* env)
 {
@@ -215,6 +224,15 @@ void* fnAll(void* argList, void* env)
   return x;
 }
 void* fnLambda(void* argList, void* env) { return closure(car(argList), cdr(argList), env); }
+void* fnMacro(void* argList, void* env) { return macro(car(argList), cdr(argList)); }
+void* fnGlobal(void* argList, void* env)
+{
+  if (consCount(argList) != 2)
+    return symbol("ERROR: global FAILED; MUST BE OF THE FORM (global variable expr)");
+  void* x = car(argList);
+  topLevel = assocCons(x, eval(car(cdr(argList)), env), topLevel);
+  return x;
+}
 void* fnAnd(void* argList, void* env)
 {
   if (!consCount(argList)) return symbol("ERROR: and FAILED; MUST BE OF THE FORM (and expr ...)");
@@ -539,6 +557,8 @@ const Primitive primitives[] =
   {"quote",             fnQuote},
   {"all",               fnAll},
   {"lambda",            fnLambda},
+  {"macro",             fnMacro},
+  {"global",            fnGlobal},
   
   // logical operators
   {"and",               fnAnd},
@@ -594,7 +614,15 @@ void* apply(void* fn, void* argList, void* env)
       for (void* l = evalList(clsrBody, e); getObjTag(l) != TAG_NIL; l = cdr(l)) x = car(l);
       return x;
     }
-    default: return symbol("ERROR: APPLY FAILED; APPLY ONLY ACCEPTS TAG_PRIM AND TAG_CLSR"); 
+    case TAG_MACRO:
+    {
+      Cons* c = *((Cons**)fn);
+      void* macroArgList = car(c), * macroBody = cdr(c), * e = assocList(macroArgList, argList, env);
+      void* x = nil;
+      for (void* l = evalList(evalList(macroBody, e), env); getObjTag(l) != TAG_NIL; l = cdr(l)) x = car(l);
+      return x;
+    }
+    default: return symbol("ERROR: APPLY FAILED; APPLY ONLY ACCEPTS OBJECTS WITH TAG_PRIM, TAG_CLSR, or TAG_MACRO"); 
   }
 }
 
@@ -610,7 +638,8 @@ void printObj(const void* x)
     case TAG_NIL: printf("()"); return; 
     case TAG_CONS: printList(x); return;
     case TAG_PRIM: printf("<primitive>%u", *((uint8_t*)x)); return;
-    case TAG_CLSR: printf("<closure>%p", *((Cons**)x)); return; 
+    case TAG_CLSR: printf("<closure>%p", *((Cons**)x)); return;
+    case TAG_MACRO: printf("<macro>%p", *((Cons**)x)); return; 
     default: printf("Object has invalid type"); return;
   }
 }
