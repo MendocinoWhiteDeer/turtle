@@ -28,8 +28,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include "bdwgc/include/gc/gc.h"
 
 void* nil;
-char* truth;
-char* falsity;
+char* truth, * falsity;
 void* topLevel;
 
 void panic(char* str)
@@ -257,7 +256,7 @@ void* fnOr(void* argList, void* env)
 }
 void* fnNot(void* argList, void* env)
 {
-  if (consCount(argList) != 1) return symbol("ERROR: not FAILED; MUST BE OF THE FORM (not expr)");
+  if (consCount(argList) != 1) return symbol("ERROR: not? FAILED; MUST BE OF THE FORM (not? expr)");
   return getObjTag(car(evalList(argList, env))) == TAG_NIL ? truth : nil;
 }
 void* fnEq(void* argList, void* env)
@@ -563,7 +562,7 @@ const Primitive primitives[] =
   // logical operators
   {"and",               fnAnd},
   {"or",                fnOr},
-  {"not",               fnNot},
+  {"not?",              fnNot},
   {"eq?",               fnEq},
 
   // control flow
@@ -589,16 +588,6 @@ const Primitive primitives[] =
   {"daemon",            fnDaemon},
   {"pipe",              fnPipe}
 };
-void* setPrimitives(void* env)
-{
-  for (uint8_t i = 0; i < sizeof(primitives) / sizeof(Primitive); i++)
-  {
-    uint8_t* id = obj(TAG_PRIM, sizeof(uint8_t));
-    *id = i;
-    env = assocCons(symbol(primitives[i].name), id, env);
-  }
-  return env;
-}
 
 void* apply(void* fn, void* argList, void* env)
 {
@@ -674,7 +663,7 @@ void peek()
     while (lookAt != '\n' && lookAt != EOF) lookAt = getchar();
   if (lookAt == EOF) exit(EXIT_SUCCESS);
 }
-uint8_t lookingAtBracket() { return  (lookAt == '(') || (lookAt == ')') || (lookAt == '[') || (lookAt == ']'); }
+uint8_t lookingAtBracket() { return (lookAt == '(') || (lookAt == ')') || (lookAt == '[') || (lookAt == ']'); }
 void nextToken()
 {
   uint8_t i = 0;
@@ -745,16 +734,26 @@ int main()
 {
   GC_INIT();
 
-  // top-level environment
   nil = obj(TAG_NIL, 0);
   truth = symbol("#t");
   falsity = symbol("#f");
-  topLevel = cons(cons(falsity, nil), cons(cons(truth, truth), nil)); // ((#f) (#t . #t))
-  topLevel = setPrimitives(topLevel);
+  
+  // initial top-level environment
+  topLevel = nil;
+  topLevel = assocCons(truth, truth, topLevel);
+  topLevel = assocCons(falsity, nil, topLevel);
+  for (uint8_t i = 0; i < sizeof(primitives) / sizeof(Primitive); i++)
+  {
+    uint8_t* id = obj(TAG_PRIM, sizeof(uint8_t));
+    *id = i;
+    topLevel = assocCons(symbol(primitives[i].name), id, topLevel);
+  }
+  /*
   printf("Top-Level Environment:\n");
   printObj(topLevel);
   printf("\n");
-
+  */
+  
   // REPL
   while(1)
   {
