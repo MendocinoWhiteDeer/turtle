@@ -12,10 +12,10 @@ set(CMAKE_C_FLAGS_DEBUG "-g -Wall -DTURTLE_DEBUG")
 set(CMAKE_C_FLAGS_RELEASE "-O3")
 
 add_executable(turtle
-  "turtle.c"
-  "obj.c"
-  "cons.c"
-  "sh.c")
+  "src/turtle.c"
+  "src/obj.c"
+  "src/cons.c"
+  "src/sh.c")
 
 add_subdirectory(bdwgc)
 target_link_libraries(turtle PRIVATE gc)

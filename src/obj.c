@@ -1,5 +1,5 @@
 #include "turtle.h"
-#include "bdwgc/include/gc/gc.h"
+#include "../bdwgc/include/gc/gc.h"
 
 void objInit() { GC_INIT(); }
 
