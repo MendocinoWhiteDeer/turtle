@@ -11,7 +11,11 @@ message("Build type: ${CMAKE_BUILD_TYPE}")
 set(CMAKE_C_FLAGS_DEBUG "-g -Wall -DTURTLE_DEBUG")
 set(CMAKE_C_FLAGS_RELEASE "-O3")
 
-add_executable(turtle "turtle.c")
+add_executable(turtle
+  "turtle.c"
+  "obj.c"
+  "cons.c"
+  "sh.c")
 
 add_subdirectory(bdwgc)
 target_link_libraries(turtle PRIVATE gc)
