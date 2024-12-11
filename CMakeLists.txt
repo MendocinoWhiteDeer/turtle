@@ -14,6 +14,7 @@ set(CMAKE_C_FLAGS_RELEASE "-O3")
 add_executable(turtle
   "src/turtle.c"
   "src/obj.c"
+  "src/atom.c"
   "src/cons.c"
   "src/sh.c")
 
